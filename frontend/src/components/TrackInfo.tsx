@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { CurrentlyPlaying } from "../hooks/useTrackPlayer";
 
 export interface TrackInfoProps {
@@ -8,7 +9,7 @@ export const TrackInfo: React.FC<TrackInfoProps> = ({ currentTrack }) => {
 	return (
 		<>
 			<img
-				src={`data:image/jpeg;base64,${currentTrack?.track.cover}`}
+				src={`${import.meta.env.VITE_STATIC_URL}/${currentTrack?.track.cover}`}
 				alt={currentTrack?.track.info.title || ""}
 				className="rounded-lg w-64 h-64 mb-4"
 			/>

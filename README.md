@@ -37,22 +37,28 @@ Out of all models, `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956` was cle
 ```bash
 ffmpeg -i file_path -c:a aac -b:a 320k -f segment -segment_time 40 -segment_list ashamed_playlist.m3u8 -segment_format mpegts ashamed_segment_%03d.ts
 ```
-1. Upload segments and playlists to S3, path must be `bucket-name/album-name/song-name/...` like this `cansu-dev-dj/Burnt Sugar/01. Only Friend/vocal/` or instrumental.
+1. Upload segments, playlists and cover to S3, 
+   1. Vocal path =>  `cansu-dev-dj/Burnt Sugar/01. Only Friend/vocal/` 
+   2. Instrumental path => `cansu-dev-dj/Burnt Sugar/01. Only Friend/instrumental/`
+   3. Cover path => `cansu-dev-dj/Burnt Sugar/cover.jpg`  (it must be `cover.png`, will make it flexible later on)
 2. Upload metadata and every other utility outputs to backend server in the format of
 ```json
 {
   "metadata": '',
   "key": '',
-  "tempo": '',
-  "length": '',
-  "instrumentalFolderPath": '', 
+  "tempo": '', // send the sonic annotator output as it is 124.25876923076923, it will be rounded up/down or trimmed.
+  "length": 230, // send the ffprobe output as it is like 56.790204
+  "instrumentalFolderPath": '',  // required
   "instrumental": false,
-  "vocalFolderPath": '',
+  "vocalFolderPath": '', // empty if no vocals
   "waveform": [],
   "vocalWaveform": [],
 }
 ```
-leave `vocalFolderPath` if the track has no vocals. `instrumentalFolderPath` is required. both is folder locations in bucket like `cansu-dev-dj/Burnt Sugar/01. Only Friend/vocal/` or instrumental.
 
+Note that, after upload, cover image will not be optimized, and served from S3 as it is. You can use `imagemagick` if your cover files are too large (this example clips any cover art larger than 400x400 to the 400x400 with %85 quality)
+```bash
+convert RAT_WARS_COVER.jpg -strip -quality 85 -resize "400x>" -sampling-factor 4:2:0  -colorspace sRGB -interlace Plane cover.png
+```
 
 I will make a GUI for this process soon.

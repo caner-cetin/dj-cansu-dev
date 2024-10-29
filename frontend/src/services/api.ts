@@ -2,5 +2,5 @@
 import axios from "axios";
 
 export const api = axios.create({
-	baseURL: "https://api.cansu.dev",
+	baseURL: import.meta.env.VITE_API_URL,
 });

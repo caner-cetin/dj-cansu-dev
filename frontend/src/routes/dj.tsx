@@ -1,6 +1,6 @@
 // AudioPlayer.tsx
 import { useEffect, useRef, useState } from "react";
-import { useTrackPlayer } from "../hooks/useTrackPlayer";
+import { type CurrentlyPlaying, useTrackPlayer } from "../hooks/useTrackPlayer";
 import { createFileRoute } from "@tanstack/react-router";
 import { Footer } from "../components/Footer";
 import { TrackInfo } from "../components/TrackInfo";
@@ -14,6 +14,7 @@ export const Route = createFileRoute("/dj")({
 
 export default function AudioPlayer() {
   // Refs for audio elements and waveform containers
+  const playing = useRef<CurrentlyPlaying | undefined>(undefined);
   const vocalPlayerRef = useRef<HTMLAudioElement>(null);
   const instrumentalPlayerRef = useRef<HTMLAudioElement>(null);
   const vocalSeekAreaRef = useRef<HTMLDivElement>(null);
@@ -24,16 +25,16 @@ export default function AudioPlayer() {
   const [isPaused, setIsPaused] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
 
-  const { loadTrack, isLoading, currentTrack } = useTrackPlayer();
+  const loadTrack = useTrackPlayer();
 
   const playRandom = async () => {
     if (
       !vocalPlayerRef.current ||
       !instrumentalPlayerRef.current ||
       !vocalSeekAreaRef.current ||
-      !instrumentalSeekAreaRef.current ||
-      isLoading
-    ) return;
+      !instrumentalSeekAreaRef.current
+    )
+      return;
 
     // Reset the current playback state
     setIsPaused(true);
@@ -42,13 +43,13 @@ export default function AudioPlayer() {
 
     try {
       loadTrack({
+        playingRef: playing,
         vocalPlayer: vocalPlayerRef.current,
         instrumentalPlayer: instrumentalPlayerRef.current,
         vocalSeekArea: vocalSeekAreaRef.current,
         instrumentalSeekArea: instrumentalSeekAreaRef.current,
         setAudioSynchronizer,
       });
-      console.log(currentTrack)
       if (vocalPlayerRef.current && instrumentalPlayerRef.current) {
         await Promise.all([
           vocalPlayerRef.current.play(),
@@ -61,7 +62,6 @@ export default function AudioPlayer() {
       console.error("Error loading track:", error);
     }
   };
-
 
   // Handle time update
   useEffect(() => {
@@ -88,11 +88,14 @@ export default function AudioPlayer() {
   return (
     <div className="bg-black text-white flex flex-col min-h-screen">
       <main className="flex-grow overflow-hidden">
-        <div id="backgroundBlur" style={{
-          backgroundImage: currentTrack?.track.cover ?
-            `url(data:image/jpeg;base64,${currentTrack.track.cover})` :
-            undefined
-        }} />
+        <div
+          id="backgroundBlur"
+          style={{
+            backgroundImage: playing.current?.track.cover
+              ? `url(${import.meta.env.VITE_STATC_URL}/${playing.current.track.cover})`
+              : undefined,
+          }}
+        />
 
         <div className="container mx-auto px-2 py-4">
           <div className="flex justify-between items-center mb-4 relative">
@@ -103,44 +106,82 @@ export default function AudioPlayer() {
                 className="px-4 py-2 text-lg"
                 onClick={() => playRandom()}
               >
-                {isLoading ? 'Loading...' : 'Play Random Track'}
+                {playing.current ? "Loading..." : "Play Random Track"}
               </button>
             </div>
             <div className="text-2xl opacity-50">
-              {currentTrack?.track.info.length ?
-                `${Math.floor(currentTrack.track.info.length / 60)}:${Math.floor(currentTrack.track.info.length % 60).toString().padStart(2, '0')
-                }` :
-                '0:00'}
+              {playing.current?.track.info.length
+                ? `${Math.floor(playing.current.track.info.length / 60)}:${Math.floor(
+                  playing.current.track.info.length % 60,
+                )
+                  .toString()
+                  .padStart(2, "0")}`
+                : "0:00"}
             </div>
           </div>
           <div className="items-center flex flex-col">
-            <TrackInfo currentTrack={currentTrack} />
-            <PlaybackControl instrumentalPlayerRef={instrumentalPlayerRef} vocalPlayerRef={vocalPlayerRef} isPaused={isPaused} setIsPaused={setIsPaused} setIsMuted={setIsMuted} isMuted={isMuted} />
-            <VolumeControl instrumentalPlayerRef={instrumentalPlayerRef} vocalPlayerRef={vocalPlayerRef} currentTrack={currentTrack} />
+            <TrackInfo currentTrack={playing.current} />
+            <PlaybackControl
+              instrumentalPlayerRef={instrumentalPlayerRef}
+              vocalPlayerRef={vocalPlayerRef}
+              isPaused={isPaused}
+              setIsPaused={setIsPaused}
+              setIsMuted={setIsMuted}
+              isMuted={isMuted}
+            />
+            <VolumeControl
+              instrumentalPlayerRef={instrumentalPlayerRef}
+              vocalPlayerRef={vocalPlayerRef}
+              currentTrack={playing.current}
+            />
           </div>
           {/* biome-ignore lint/a11y/useMediaCaption: <explanation> */}
-          <audio ref={instrumentalPlayerRef} onPlay={() => currentTrack?.instrumentalWaveSurfer.play()} aria-describedby="music-description" />
+          <audio
+            ref={instrumentalPlayerRef}
+            onPlay={() => playing.current?.instrumentalWaveSurfer.play()}
+            aria-describedby="music-description"
+          />
           {/* biome-ignore lint/a11y/useMediaCaption: <explanation> */}
-          <audio ref={vocalPlayerRef} onPlay={() => currentTrack?.vocalWaveSurfer?.play()} aria-describedby="music-description" />
+          <audio
+            ref={vocalPlayerRef}
+            onPlay={() => playing.current?.vocalWaveSurfer?.play()}
+            aria-describedby="music-description"
+          />
           <p id="music-description" className="sr-only">
-            {currentTrack?.track.info.title || 'Unknown track'} -
-            {currentTrack?.track.info.artist || 'Unknown artist'}
+            {playing.current?.track.info.title || "Unknown track"} -
+            {playing.current?.track.info.artist || "Unknown artist"}
           </p>
 
           <div className="mt-2">
             <div className="flex space-x-2">
               <img src="/images/bpm.svg" height={26} width={26} alt="BPM" />
-              <p>{currentTrack?.track.info.tempo.toFixed(0) || ''}</p>
-              <img src="/images/track-key.svg" height={24} width={24} alt="Track Key" />
-              <p>{currentTrack?.track.info.key || ''}</p>
+              <p>
+                {/* flashbang */}
+                {(typeof playing.current?.track.info.tempo === 'number'
+                  ? playing.current.track.info.tempo.toFixed(0)
+                  : Number.parseFloat(playing.current?.track.info.tempo ?? '0').toFixed(0)) || ""}
+              </p>
+              <img
+                src="/images/track-key.svg"
+                height={24}
+                width={24}
+                alt="Track Key"
+              />
+              <p>{playing.current?.track.info.key || ""}</p>
             </div>
 
             {/* Waveform */}
             <div className="waveform-container">
               <div className="waveform-background" />
               <div className="waveform-content">
-                <div ref={vocalSeekAreaRef} className="cursor-pointer w-full px-4" />
-                <div ref={instrumentalSeekAreaRef} className="cursor-pointer w-full px-4" />
+                <div
+                  ref={vocalSeekAreaRef}
+                  className="cursor-pointer w-full px-4"
+                />
+                <div
+                  ref={instrumentalSeekAreaRef}
+                  className="cursor-pointer w-full px-4"
+                />
               </div>
             </div>
           </div>
@@ -150,4 +191,4 @@ export default function AudioPlayer() {
       </main>
     </div>
   );
-};
+}

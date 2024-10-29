@@ -1,10 +1,10 @@
-import { useMutation } from "@tanstack/react-query";
 import WaveSurfer from "wavesurfer.js";
 import Hls from "hls.js";
 import { type Track, useRandomTrack, useTrack } from "./useApi";
 import { AudioSynchronizer } from "../utils/AudioSynchronizer";
 
 export interface LoadTrackProp {
+	playingRef: React.MutableRefObject<CurrentlyPlaying | undefined>;
 	vocalPlayer: HTMLAudioElement;
 	instrumentalPlayer: HTMLAudioElement;
 	vocalSeekArea: HTMLElement;
@@ -67,37 +67,30 @@ export const useTrackPlayer = () => {
 			hls.attachMedia(mediaElement);
 		});
 	};
-	const loadTrackMutation = useMutation({
-		mutationFn: async ({
-			trackId,
+	const loadTrack = async ({
+		playingRef,
+		trackId,
+		vocalPlayer,
+		instrumentalPlayer,
+		vocalSeekArea,
+		instrumentalSeekArea,
+		setAudioSynchronizer,
+	}: LoadTrackProp): Promise<void> => {
+		let track: Track;
+		if (trackId) {
+			track = (await useTrack(trackId)).data;
+		}
+		track = (await useRandomTrack(getAnonymousId())).data;
+		playingRef.current = await setupAudioPlayers({
+			playingRef: playingRef,
+			track: track,
 			vocalPlayer,
 			instrumentalPlayer,
 			vocalSeekArea,
 			instrumentalSeekArea,
 			setAudioSynchronizer,
-		}: LoadTrackProp) => {
-			if (trackId) {
-				const track = await useTrack(trackId);
-				return await setupAudioPlayers({
-					track: track.data,
-					vocalPlayer,
-					instrumentalPlayer,
-					vocalSeekArea,
-					instrumentalSeekArea,
-					setAudioSynchronizer,
-				});
-			}
-			const track = await useRandomTrack(getAnonymousId());
-			return await setupAudioPlayers({
-				track: track.data,
-				vocalPlayer,
-				instrumentalPlayer,
-				vocalSeekArea,
-				instrumentalSeekArea,
-				setAudioSynchronizer,
-			});
-		},
-	});
+		});
+	};
 	const setupAudioPlayers = async ({
 		track,
 		vocalPlayer,
@@ -115,29 +108,29 @@ export const useTrackPlayer = () => {
 		instrumentalSeekArea.innerHTML = "";
 		const instrumentalWaveSurfer = setupWaveSurfer(
 			instrumentalSeekArea,
-			info.instrumentalWaveform.data,
+			info.instrumental_waveform,
 			duration,
 		);
 		let vocalWaveSurfer: WaveSurfer | undefined;
-		if (!info.instrumental && info.vocalWaveform) {
+		if (!info.instrumental && info.vocal_waveform) {
 			vocalSeekArea.innerHTML = "";
 			vocalWaveSurfer = setupWaveSurfer(
 				vocalSeekArea,
-				info.vocalWaveform.data,
+				info.vocal_waveform,
 				duration,
 			);
 		}
 
 		// Setup HLS streams
 		const instrumentalHls = await setupHls(
-			`${import.meta.env.VITE_STATIC_URL}/${track.savedInstrumentalFolderPath}/playlist.m3u8`,
+			`${import.meta.env.VITE_STATIC_URL}/${track.saved_instrumental_folder_path}/playlist.m3u8`,
 			instrumentalPlayer,
 		);
 
 		let vocalHls: Hls | null = null;
-		if (!info.instrumental && track.savedVocalFolderPath) {
+		if (!info.instrumental && track.saved_vocal_folder_path) {
 			vocalHls = await setupHls(
-				`${import.meta.env.VITE_STATIC_URL}/${track.savedVocalFolderPath}/playlist.m3u8`,
+				`${import.meta.env.VITE_STATIC_URL}/${track.saved_vocal_folder_path}/playlist.m3u8`,
 				vocalPlayer,
 			);
 		}
@@ -176,10 +169,5 @@ export const useTrackPlayer = () => {
 		} as CurrentlyPlaying;
 	};
 
-	return {
-		loadTrack: loadTrackMutation.mutate,
-		isLoading: loadTrackMutation.isPending,
-		currentTrack: loadTrackMutation.data,
-		error: loadTrackMutation.error,
-	};
+	return loadTrack;
 };
