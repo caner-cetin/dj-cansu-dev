@@ -92,7 +92,7 @@ export default function AudioPlayer() {
           id="backgroundBlur"
           style={{
             backgroundImage: playing.current?.track.cover
-              ? `url(${import.meta.env.VITE_STATC_URL}/${playing.current.track.cover})`
+              ? `url(${import.meta.env.VITE_STATIC_URL}/${playing.current.track.cover})`
               : undefined,
           }}
         />
