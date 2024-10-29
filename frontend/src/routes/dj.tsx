@@ -92,7 +92,7 @@ export default function AudioPlayer() {
           id="backgroundBlur"
           style={{
             backgroundImage: playing.current?.track.cover
-              ? `url(${import.meta.env.VITE_STATIC_URL}/${playing.current.track.cover})`
+              ? `url("${import.meta.env.VITE_STATIC_URL}/${playing.current.track.cover}")`
               : undefined,
           }}
         />
@@ -106,7 +106,7 @@ export default function AudioPlayer() {
                 className="px-4 py-2 text-lg"
                 onClick={() => playRandom()}
               >
-                {playing.current ? "Loading..." : "Play Random Track"}
+                Play Random Track
               </button>
             </div>
             <div className="text-2xl opacity-50">
