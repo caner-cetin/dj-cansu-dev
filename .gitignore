@@ -22,7 +22,6 @@ pnpm-debug.log*
 
 .env
 tmp
-judge0.conf
 .wrangler
 .dev.vars
 config.monitoring

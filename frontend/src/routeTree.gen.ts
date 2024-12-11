@@ -12,7 +12,6 @@
 
 import { Route as rootRoute } from './routes/__root'
 import { Route as DjImport } from './routes/dj'
-import { Route as IndexImport } from './routes/index'
 
 // Create/Update Routes
 
@@ -22,23 +21,10 @@ const DjRoute = DjImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
-const IndexRoute = IndexImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRoute,
-} as any)
-
 // Populate the FileRoutesByPath interface
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexImport
-      parentRoute: typeof rootRoute
-    }
     '/dj': {
       id: '/dj'
       path: '/dj'
@@ -52,37 +38,32 @@ declare module '@tanstack/react-router' {
 // Create and export the route tree
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
   '/dj': typeof DjRoute
 }
 
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/dj': typeof DjRoute
 }
 
 export interface FileRoutesById {
   __root__: typeof rootRoute
-  '/': typeof IndexRoute
   '/dj': typeof DjRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dj'
+  fullPaths: '/dj'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dj'
-  id: '__root__' | '/' | '/dj'
+  to: '/dj'
+  id: '__root__' | '/dj'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
   DjRoute: typeof DjRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
   DjRoute: DjRoute,
 }
 
@@ -98,12 +79,8 @@ export const routeTree = rootRoute
     "__root__": {
       "filePath": "__root.tsx",
       "children": [
-        "/",
         "/dj"
       ]
-    },
-    "/": {
-      "filePath": "index.tsx"
     },
     "/dj": {
       "filePath": "dj.tsx"
