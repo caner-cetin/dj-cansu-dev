@@ -1,0 +1,16 @@
+credentials:
+  username:
+  password:
+docker:
+  image:
+    # image name for `docker -t strafe .`
+    # `strafe` by default
+    name: strafe
+    # image tag, can be specified for versions
+    # set to latest by default
+    tag: latest
+  # docker.sock of your choice of containerization tool
+  # orbstack under osx for me here
+  # `unix:///var/run/docker.sock` by default, which, if you have plain docker engine under unix
+  # it should be fine
+  socket: /Users/canercetin/.orbstack/run/docker.sock

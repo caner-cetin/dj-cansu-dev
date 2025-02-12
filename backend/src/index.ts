@@ -25,7 +25,7 @@ const allowedOrigins = [
 app.use(
 	"*",
 	cors({
-		origin: ["https://cansu.dev", "http://localhost:5173"],
+		origin: ["https://cansu.dev", "http://localhost:5173", "https://dj.cansu.dev"],
 		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type"],
 		exposeHeaders: ["Link"],

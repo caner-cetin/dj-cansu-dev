@@ -3,6 +3,10 @@ Multichannel segmented audio player demo
 ![img1](static/ss1.png)
 There is only very few albums uploaded, due to copyright laws. Sorry for not providing further, or not providing a library functionality, copyright laws for music are very strict.
 
+updates, updates, updates. i am building a CLI for the uploading process. you need Docker/OrbStack/anything thats compatible with Docker Engine API installed. its work in progress, and, a lot of work needs to be done, but check the `/strafe/` folder for the current progress.
+
+
+
 Here is how uploading process works:
 1. Split track with [Audio Seperator](https://github.com/nomadkaraoke/python-audio-separator)
 ```python
