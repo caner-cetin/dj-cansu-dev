@@ -1,12 +1,9 @@
 package cmd
 
 import (
-	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -38,8 +35,8 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .strafe.yaml under current working directory)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "more noise, bzzt")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.strafe.yaml)")
+	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "verbose output (-v: info, -vv: debug, -vvv: trace)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -55,12 +52,12 @@ func initConfig() {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
 	} else {
-		_, filename, _, ok := runtime.Caller(0)
-		if !ok {
-			cobra.CheckErr(errors.New("unable to get the current filename"))
-			return
+		home, err := os.UserHomeDir()
+		cobra.CheckErr(err)
+		viper.AddConfigPath(home)
+		if os.Getenv(STRAFE_CONFIG_LOC_ENV) != "" {
+			viper.AddConfigPath(os.Getenv(STRAFE_CONFIG_LOC_ENV))
 		}
-		viper.AddConfigPath(filepath.Dir(filename))
 		viper.SetConfigType("yaml")
 		viper.SetConfigName(".strafe")
 	}
@@ -69,11 +66,20 @@ func initConfig() {
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		if verbose {
-			fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		switch verbosity {
+		case 1:
+			log.SetLevel(log.InfoLevel)
+		case 2:
+			log.SetLevel(log.DebugLevel)
+		case 3:
+			log.SetLevel(log.TraceLevel)
+		default:
+			log.SetLevel(log.WarnLevel)
 		}
+		log.Debugf("using config file: %s \n", viper.ConfigFileUsed())
 	} else {
-		fmt.Fprintf(os.Stderr, "cannot load config file: %v \n", err)
+		log.Errorf("cannot load config file: %v \n", err)
 		os.Exit(1)
 	}
+
 }

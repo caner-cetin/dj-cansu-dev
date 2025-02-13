@@ -2,25 +2,32 @@ package cmd
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/fatih/color"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
 	"github.com/spf13/viper"
 )
 
 var (
+	SourceFolder      string
 	ImageBuildContext *bytes.Buffer
 	dockerRootCmd     = &cobra.Command{
 		Use:   "docker",
@@ -32,48 +39,38 @@ var (
 	}
 	imageExistsCmd = &cobra.Command{
 		Use:   "exists",
-		Short: "check if the *strafe* docker image exists (searched by the name in config file)",
+		Short: "check if image exists",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := imageExists()
-			if err != nil {
-				color.Red("image does not exist >///< %v \n", err)
-				os.Exit(1)
-			}
+			exitIfImage(DoesNotExist)
 			color.Green("image exists!")
 		},
 	}
 	buildImageCmd = &cobra.Command{
-		Use:   "build",
-		Short: "build the image with target configured by docker.image.name and .tag if the image does not exist already",
-		Run: func(cmd *cobra.Command, args []string) {
-			err := imageExists()
-			if err == nil {
-				color.Cyan("image already exists >.<")
-				os.Exit(0)
-			}
-			buildImage()
-
-		},
+		Use:   "build [-D -dir]",
+		Short: "build the image if it does not exist",
+		Long: `builds the utility image if it does not exit already.
+source code is required for building the image.
+if you are running this command from the root of source code (the one with the Dockerfile in it), then this command will work fine.
+if you are running from a different folder, use the --dir / -D flag to provide the source code folder.`,
+		Run: buildImage,
 	}
-	deleteImageCmd = &cobra.Command{
-		Use:   "delete",
-		Short: "delete the image with target configured by docker.image.name and .tag, if the image exists.",
-		Run: func(cmd *cobra.Command, args []string) {
-			err := imageExists()
-			if err != nil {
-				color.Red("image does not exist!")
-				os.Exit(1)
-			}
-			deleteImage()
-
-		},
+	removeImageCmd = &cobra.Command{
+		Use:   "remove",
+		Short: "remove the image",
+		Run:   removeImage,
+	}
+	healthImageCmd = &cobra.Command{
+		Use:   "health",
+		Short: "check health of utilities inside the image",
+		Run:   func(cmd *cobra.Command, args []string) {},
 	}
 )
 
 func getDockerRootCmd() *cobra.Command {
 	imageRootCmd.AddCommand(imageExistsCmd)
+	buildImageCmd.PersistentFlags().StringVarP(&SourceFolder, "dir", "D", ".", "source code folder")
 	imageRootCmd.AddCommand(buildImageCmd)
-	imageRootCmd.AddCommand(deleteImageCmd)
+	imageRootCmd.AddCommand(removeImageCmd)
 	dockerRootCmd.AddCommand(imageRootCmd)
 	return dockerRootCmd
 }
@@ -97,19 +94,75 @@ func imageExists() error {
 	return err
 }
 
-func buildImage() {
+type ImageCheckCondition int
+
+const (
+	Exists       ImageCheckCondition = 0
+	DoesNotExist ImageCheckCondition = 1
+)
+
+func exitIfImage(condition ImageCheckCondition) {
+	err := imageExists()
+	switch condition {
+	case Exists:
+		if err == nil {
+			color.Cyan("image already exists >.<")
+			os.Exit(0)
+		}
+	case DoesNotExist:
+		if err != nil {
+			color.Red("image does not exist >///<\n%v", err)
+			os.Exit(1)
+		}
+	}
+}
+
+type BuildResponse struct {
+	Stream string `json:"stream"`
+	Error  string `json:"error"`
+}
+
+func buildImage(cmd *cobra.Command, args []string) {
+	exitIfImage(Exists)
+	s := spinner.New(spinner.CharSets[12], 100*time.Millisecond)
+	s.Prefix = "Building image "
+	s.Start()
+	defer s.Stop()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
 	defer cancel()
 	docker := newDockerClient()
-	buildCtx, err := createBuildContext(".")
+	buildCtx, err := createBuildContext(SourceFolder)
 	cobra.CheckErr(err)
 	response, err := docker.ImageBuild(ctx, buildCtx, types.ImageBuildOptions{
 		Tags: []string{getImageTag()},
 	})
 	cobra.CheckErr(err)
-	body, err := io.ReadAll(response.Body)
-	cobra.CheckErr(err)
-	fmt.Println(string(body))
+	decoder := json.NewDecoder(response.Body)
+	for {
+		var message BuildResponse
+		if err := decoder.Decode(&message); err != nil {
+			if err == io.EOF {
+				break
+			}
+			cobra.CheckErr(err)
+		}
+
+		if message.Error != "" {
+			s.Stop()
+			log.Error(message.Error)
+			s.Start()
+			continue
+		}
+
+		if message.Stream != "" {
+			cleanMsg := strings.TrimSuffix(message.Stream, "\n")
+			if cleanMsg != "" {
+				s.Stop()
+				fmt.Println(cleanMsg)
+				s.Start()
+			}
+		}
+	}
 }
 
 func getImageInfo() image.Summary {
@@ -125,13 +178,27 @@ func getImageInfo() image.Summary {
 	return images[0]
 }
 
-func deleteImage() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second * 10)
+func removeImage(cmd *cobra.Command, args []string) {
+	exitIfImage(DoesNotExist)
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print(color.RedString("this action will remove image %s, are you sure? [y/N] ", getImageTag()))
+		s, _ := reader.ReadString('\n')
+		if strings.ToLower(strings.TrimSpace(s)) == "n" || strings.TrimSpace(s) == "" {
+			color.Cyan("wise choice, goodbye!")
+			os.Exit(0)
+		}
+		if strings.ToLower(strings.TrimSpace(s)) == "y" {
+			color.Magenta("removing image...")
+			break
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	docker := newDockerClient()
 	resp, err := docker.ImageRemove(ctx, getImageInfo().ID, image.RemoveOptions{Force: true})
 	cobra.CheckErr(err)
-	color.Green("image %s deleted successfully", resp[0].Untagged)
+	color.Green("image %s removed successfully", resp[0].Untagged)
 }
 
 func createBuildContext(contextPath string) (*bytes.Buffer, error) {
@@ -146,7 +213,6 @@ func createBuildContext(contextPath string) (*bytes.Buffer, error) {
 		if info.IsDir() {
 			return nil
 		}
-		fmt.Println(path)
 		relPath, err := filepath.Rel(contextPath, path)
 		if err != nil {
 			return err

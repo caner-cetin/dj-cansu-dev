@@ -6,16 +6,18 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 const (
-	CREDENTIALS_USERNAME = "credentials.username"
-	CREDENTIALS_PASSWORD = "credentials.password"
-	DOCKER_IMAGE_NAME    = "docker.image.name"
-	DOCKER_IMAGE_TAG     = "docker.image.tag"
-	DOCKER_SOCKET        = "docker.socket"
+	STRAFE_CONFIG_LOC_ENV = "STRAFE_CFG"
+	CREDENTIALS_USERNAME  = "credentials.username"
+	CREDENTIALS_PASSWORD  = "credentials.password"
+	DOCKER_IMAGE_NAME     = "docker.image.name"
+	DOCKER_IMAGE_TAG      = "docker.image.tag"
+	DOCKER_SOCKET         = "docker.socket"
 )
 
 var (
@@ -27,13 +29,21 @@ var (
 
 var (
 	PrintSensitiveCFGVars bool
-	verbose               bool
+	verbosity             int
 	configCmd             = &cobra.Command{
 		Use:   "cfg",
 		Short: "print config variables and exit",
 		Run: func(cmd *cobra.Command, args []string) {
+			log.WithFields(log.Fields{
+				"username_set": viper.IsSet(CREDENTIALS_USERNAME),
+				"password_set": viper.IsSet(CREDENTIALS_PASSWORD),
+			}).Debug("uploader settings")
+			log.WithFields(log.Fields{
+				"image_name_set": viper.IsSet(DOCKER_IMAGE_NAME),
+				"image_tag_set":  viper.IsSet(DOCKER_IMAGE_TAG),
+				"socket_set":     viper.IsSet(DOCKER_SOCKET),
+			}).Debug("docker settings")
 			table := tablewriter.NewWriter(os.Stdout)
-
 			table.SetHeader([]string{"Section", "Key", "Value", "Status"})
 			table.SetAutoWrapText(false)
 			table.SetAutoFormatHeaders(true)
@@ -83,7 +93,6 @@ var (
 				valueColor.Sprint(viper.GetString(DOCKER_SOCKET)),
 				checkmark,
 			})
-
 			table.Render()
 		},
 	}
