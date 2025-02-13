@@ -77,6 +77,8 @@ func initConfig() {
 			log.SetLevel(log.WarnLevel)
 		}
 		log.Debugf("using config file: %s \n", viper.ConfigFileUsed())
+		viper.SetDefault(DOCKER_IMAGE_NAME, DOCKER_IMAGE_NAME_DEFAULT)
+		viper.SetDefault(DOCKER_IMAGE_TAG, DOCKER_IMAGE_TAG_DEFAULT)
 	} else {
 		log.Errorf("cannot load config file: %v \n", err)
 		os.Exit(1)

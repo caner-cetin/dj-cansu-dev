@@ -36,6 +36,11 @@ RUN apt-get install -y libavutil-dev libavcodec-dev libavformat-dev libswresampl
 ENV LD_LIBRARY_PATH=/usr/local/lib/:/usr/lib/
 RUN make && make install
 RUN apt-get install -y aubio-tools python3-aubio
+RUN wget  https://exiftool.org/Image-ExifTool-13.19.tar.gz && \
+  gzip -dc Image-ExifTool-13.19.tar.gz | tar -xf - && \
+  cd Image-ExifTool-13.19 && \
+  perl Makefile.PL && \
+  make install
 RUN rm -rf /tmp/
 RUN mkdir -p /app/
 WORKDIR /app/

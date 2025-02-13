@@ -20,6 +20,11 @@ const (
 	DOCKER_SOCKET         = "docker.socket"
 )
 
+const (
+	DOCKER_IMAGE_NAME_DEFAULT = "strafe"
+	DOCKER_IMAGE_TAG_DEFAULT  = "latest"
+)
+
 var (
 	sectionColor = color.New(color.FgBlue, color.Bold)
 	keyColor     = color.New(color.FgCyan)

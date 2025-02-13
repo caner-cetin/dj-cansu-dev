@@ -16,8 +16,10 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/fatih/color"
 	log "github.com/sirupsen/logrus"
@@ -27,9 +29,7 @@ import (
 )
 
 var (
-	SourceFolder      string
-	ImageBuildContext *bytes.Buffer
-	dockerRootCmd     = &cobra.Command{
+	dockerRootCmd = &cobra.Command{
 		Use:   "docker",
 		Short: "docker commands",
 	}
@@ -46,12 +46,20 @@ var (
 		},
 	}
 	buildImageCmd = &cobra.Command{
-		Use:   "build [-D -dir]",
+		Use:   "build [-D --dir] [-F --force] [-Q --quiet]",
 		Short: "build the image if it does not exist",
-		Long: `builds the utility image if it does not exit already.
+		Long: `builds the utility image if it does not exist already.
+
 source code is required for building the image.
 if you are running this command from the root of source code (the one with the Dockerfile in it), then this command will work fine.
-if you are running from a different folder, use the --dir / -D flag to provide the source code folder.`,
+if you are running from a different folder, use the --dir / -D flag to provide the source code folder.
+
+command will exit with status code 0 if the image tag already exists (docker.image.name:docker.image.tag from configuration).
+use --force / -F flag to override this behaviour and build the image anyways.
+
+logs will be streamed by default just like the normal image building process, use --quiet / -Q to shut me up
+
+this process may take a while.`,
 		Run: buildImage,
 	}
 	removeImageCmd = &cobra.Command{
@@ -62,15 +70,27 @@ if you are running from a different folder, use the --dir / -D flag to provide t
 	healthImageCmd = &cobra.Command{
 		Use:   "health",
 		Short: "check health of utilities inside the image",
-		Run:   func(cmd *cobra.Command, args []string) {},
+		Run:   healthImage,
 	}
+)
+
+var (
+	SourceFolder      string
+	ImageBuildContext *bytes.Buffer
+	ForceBuildImage   bool
+	DisableBuildLogs  bool
+	TimeoutMS         int
 )
 
 func getDockerRootCmd() *cobra.Command {
 	imageRootCmd.AddCommand(imageExistsCmd)
 	buildImageCmd.PersistentFlags().StringVarP(&SourceFolder, "dir", "D", ".", "source code folder")
+	buildImageCmd.PersistentFlags().BoolVarP(&ForceBuildImage, "force", "F", false, "build image even if it exists")
+	buildImageCmd.PersistentFlags().BoolVarP(&DisableBuildLogs, "quiet", "Q", false, "no log stream")
 	imageRootCmd.AddCommand(buildImageCmd)
 	imageRootCmd.AddCommand(removeImageCmd)
+	imageRootCmd.AddCommand(healthImageCmd)
+	dockerRootCmd.PersistentFlags().IntVarP(&TimeoutMS, "timeout", "T", int((time.Minute * 20).Milliseconds()), "default timeout for commands in milliseconds, set to 20 minutes by default")
 	dockerRootCmd.AddCommand(imageRootCmd)
 	return dockerRootCmd
 }
@@ -112,6 +132,7 @@ func exitIfImage(condition ImageCheckCondition) {
 	case DoesNotExist:
 		if err != nil {
 			color.Red("image does not exist >///<\n%v", err)
+			color.Red("try using command %s", color.MagentaString("strafe docker image build"))
 			os.Exit(1)
 		}
 	}
@@ -123,12 +144,14 @@ type BuildResponse struct {
 }
 
 func buildImage(cmd *cobra.Command, args []string) {
-	exitIfImage(Exists)
+	if !ForceBuildImage {
+		exitIfImage(Exists)
+	}
 	s := spinner.New(spinner.CharSets[12], 100*time.Millisecond)
 	s.Prefix = "Building image "
 	s.Start()
 	defer s.Stop()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(TimeoutMS)*time.Millisecond)
 	defer cancel()
 	docker := newDockerClient()
 	buildCtx, err := createBuildContext(SourceFolder)
@@ -137,29 +160,31 @@ func buildImage(cmd *cobra.Command, args []string) {
 		Tags: []string{getImageTag()},
 	})
 	cobra.CheckErr(err)
-	decoder := json.NewDecoder(response.Body)
-	for {
-		var message BuildResponse
-		if err := decoder.Decode(&message); err != nil {
-			if err == io.EOF {
-				break
+	if !DisableBuildLogs {
+		decoder := json.NewDecoder(response.Body)
+		for {
+			var message BuildResponse
+			if err := decoder.Decode(&message); err != nil {
+				if err == io.EOF {
+					break
+				}
+				cobra.CheckErr(err)
 			}
-			cobra.CheckErr(err)
-		}
 
-		if message.Error != "" {
-			s.Stop()
-			log.Error(message.Error)
-			s.Start()
-			continue
-		}
-
-		if message.Stream != "" {
-			cleanMsg := strings.TrimSuffix(message.Stream, "\n")
-			if cleanMsg != "" {
+			if message.Error != "" {
 				s.Stop()
-				fmt.Println(cleanMsg)
+				log.Error(message.Error)
 				s.Start()
+				continue
+			}
+
+			if message.Stream != "" {
+				cleanMsg := strings.TrimSuffix(message.Stream, "\n")
+				if cleanMsg != "" {
+					s.Stop()
+					fmt.Println(cleanMsg)
+					s.Start()
+				}
 			}
 		}
 	}
@@ -199,6 +224,69 @@ func removeImage(cmd *cobra.Command, args []string) {
 	resp, err := docker.ImageRemove(ctx, getImageInfo().ID, image.RemoveOptions{Force: true})
 	cobra.CheckErr(err)
 	color.Green("image %s removed successfully", resp[0].Untagged)
+}
+
+func healthImage(cmd *cobra.Command, args []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(TimeoutMS)*time.Millisecond)
+	defer cancel()
+	exitIfImage(DoesNotExist)
+	log.Info("checking if exiftool works...")
+	docker := newDockerClient()
+	script := `#!/bin/bash
+keyfinder-cli
+echo "exiftool version: $(exiftool -ver)"
+echo "keyfinder-cli (OK if you dont see anything, keyfinder-cli does not have version flag): "
+echo "aubio version: $(aubio --version)"
+echo "audiowaveform version: $(audiowaveform --version) "
+echo "ffprobe version: $(ffprobe -version)"
+`
+	scriptFile, err := os.CreateTemp(os.TempDir(), "strafe-health-script-*.sh")
+	check(err)
+	defer scriptFile.Close()
+	defer os.Remove(scriptFile.Name())
+	_, err = io.WriteString(scriptFile, script)
+	check(err)
+	resp, err := docker.ContainerCreate(
+		ctx,
+		&container.Config{
+			Image:        getImageTag(),
+			AttachStdout: true,
+			AttachStderr: true,
+			Tty:          false,
+			Cmd:          []string{"/bin/bash", scriptFile.Name()},
+		},
+		&container.HostConfig{
+			Mounts: []mount.Mount{
+				{
+					Type:   mount.TypeBind,
+					Source: scriptFile.Name(),
+					Target: scriptFile.Name(),
+				},
+			},
+		},
+		nil,
+		nil,
+		"")
+	defer func() {
+		log.Infof("force removing container with the id %s", resp.ID)
+		docker.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+	}()
+	cobra.CheckErr(err)
+	log.Info("starting container")
+	if err := docker.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		log.Fatal(color.RedString(err.Error()))
+	}
+	statusCh, errCh := docker.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		check(err)
+	case <-statusCh:
+		out, err := docker.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
+		check(err)
+		outBytes, err := io.ReadAll(out)
+		check(err)
+		log.Infof("healthcheck:\n%s", string(outBytes))
+	}
 }
 
 func createBuildContext(contextPath string) (*bytes.Buffer, error) {
