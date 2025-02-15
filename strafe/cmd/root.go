@@ -44,6 +44,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(getConfigCmd())
 	rootCmd.AddCommand(getDockerRootCmd())
+	rootCmd.AddCommand(getAudioRootCmd())
 }
 
 // initConfig reads in config file and ENV variables if set.

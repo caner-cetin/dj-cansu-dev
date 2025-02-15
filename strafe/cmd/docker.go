@@ -226,6 +226,34 @@ func removeImage(cmd *cobra.Command, args []string) {
 	color.Green("image %s removed successfully", resp[0].Untagged)
 }
 
+// returns container id of whichever argument is not null
+// if both is not null, container.CreateResponse has the priority
+func getContainerId(resp *container.CreateResponse, id *string) string {
+	var cid string
+	if resp != nil {
+		cid = resp.ID
+	} else {
+		cid = *id
+	}
+	return cid
+}
+
+// removes container by the specified container ID or the create response from ContainerCreate function.
+func removeContainer(ctx context.Context, resp *container.CreateResponse, id *string, docker *client.Client) {
+	var cid = getContainerId(resp, id)
+	log.Infof("force removing container with the id %s", cid)
+	docker.ContainerRemove(ctx, cid, container.RemoveOptions{Force: true})
+}
+
+// starts container with the specified container ID or the create response from ContainerCreate function.
+func startContainer(ctx context.Context, resp *container.CreateResponse, id *string, docker *client.Client) {
+	var cid = getContainerId(resp, id)
+	log.Infof("starting container with the id %s", cid)
+	if err := docker.ContainerStart(ctx, cid, container.StartOptions{}); err != nil {
+		log.Fatal(color.RedString(err.Error()))
+	}
+}
+
 func healthImage(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(TimeoutMS)*time.Millisecond)
 	defer cancel()
@@ -267,15 +295,9 @@ echo "ffprobe version: $(ffprobe -version)"
 		nil,
 		nil,
 		"")
-	defer func() {
-		log.Infof("force removing container with the id %s", resp.ID)
-		docker.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
-	}()
-	cobra.CheckErr(err)
-	log.Info("starting container")
-	if err := docker.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		log.Fatal(color.RedString(err.Error()))
-	}
+	check(err)
+	defer removeContainer(ctx, &resp, nil, docker)
+	startContainer(ctx, &resp, nil, docker)
 	statusCh, errCh := docker.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
@@ -286,6 +308,10 @@ echo "ffprobe version: $(ffprobe -version)"
 		outBytes, err := io.ReadAll(out)
 		check(err)
 		log.Infof("healthcheck:\n%s", string(outBytes))
+	}
+	color.Green("image is built and healthy!")
+	if verbosity == 0 {
+		color.Cyan("use -v flag for more detailed output")
 	}
 }
 
@@ -329,4 +355,16 @@ func createBuildContext(contextPath string) (*bytes.Buffer, error) {
 		return nil, err
 	}
 	return buf, nil
+}
+
+func createTempFile(ext string) (*os.File, error) {
+	baseDir := os.TempDir()
+	timestamp := time.Now().UnixNano()
+	filename := fmt.Sprintf("strafe_waveform_%d.%s", timestamp, ext)
+	filepath := filepath.Join(baseDir, filename)
+	file, err := os.Create(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create file: %w", err)
+	}
+	return file, nil
 }
