@@ -1,0 +1,3 @@
+[submodule "strafe"]
+	path = strafe
+	url = https://github.com/caner-cetin/strafe
