@@ -123,14 +123,14 @@ export const useTrackPlayer = () => {
 
 		// Setup HLS streams
 		const instrumentalHls = await setupHls(
-			`${import.meta.env.VITE_STATIC_URL}/${track.saved_instrumental_folder_path}/playlist.m3u8`,
+			`${import.meta.env.VITE_STATIC_URL}/${track.saved_instrumental_folder_path}`,
 			instrumentalPlayer,
 		);
 
 		let vocalHls: Hls | null = null;
 		if (!info.instrumental && track.saved_vocal_folder_path) {
 			vocalHls = await setupHls(
-				`${import.meta.env.VITE_STATIC_URL}/${track.saved_vocal_folder_path}/playlist.m3u8`,
+				`${import.meta.env.VITE_STATIC_URL}/${track.saved_vocal_folder_path}`,
 				vocalPlayer,
 			);
 		}
