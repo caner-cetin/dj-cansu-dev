@@ -28,3 +28,4 @@ config.monitoring
 deployments/monitoring/alertmanager/config.yml
 .strafe.yaml
 strafecli
+.strafe.yaml
